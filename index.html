@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ΚΡΥΠΤΟΣ · Cryptogreek</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=GFS+Didot&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:        #14110d;
+    --ink-soft:   #1f1a13;
+    --parchment:  #e8dcc4;
+    --parch-deep: #d4c39c;
+    --gold:       #c9a961;
+    --gold-bright:#e8c878;
+    --gold-deep:  #8a6f3a;
+    --wine:       #6b1f1f;
+    --wine-bright:#8a2e2e;
+    --green-patina:#3a5a4a;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; overflow:hidden; }
+
+  body{
+    background: var(--ink);
+    color: var(--parchment);
+    font-family: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.45;
+    position: relative;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Layered background: dark wash + faint Greek key + radial glow + grain */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(201,169,97,0.10), transparent 55%),
+      radial-gradient(ellipse at 85% 95%, rgba(107,31,31,0.18), transparent 60%),
+      linear-gradient(180deg, #1a1612 0%, #0e0c08 100%);
+    z-index:-3;
+  }
+
+  /* faint engraved pattern */
+  body::after{
+    content:"";
+    position:fixed; inset:0;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(232,220,196,0.015) 0 1px, transparent 1px 3px),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><g fill='none' stroke='%23c9a961' stroke-width='0.4' opacity='0.08'><path d='M0 30 L20 30 L20 10 L40 10 L40 30 L30 30 L30 20'/></g></svg>");
+    z-index:-2;
+    pointer-events:none;
+  }
+
+  /* ───── layout ───── */
+  .app{
+    display:grid;
+    grid-template-rows: auto 1fr auto;
+    height:100vh;
+    padding: 28px 48px 18px;
+    gap: 18px;
+  }
+
+  /* ───── header ───── */
+  header{
+    text-align:center;
+    border-bottom: 1px solid rgba(201,169,97,0.22);
+    padding-bottom: 14px;
+    position: relative;
+  }
+  header::before, header::after{
+    content:"❦";
+    color: var(--gold);
+    opacity: 0.5;
+    position:absolute;
+    top:6px;
+    font-size: 18px;
+  }
+  header::before{ left: 0; }
+  header::after{ right: 0; }
+
+  h1{
+    font-family: "Cinzel", "GFS Didot", serif;
+    font-weight: 800;
+    font-size: 38px;
+    letter-spacing: 0.18em;
+    color: var(--gold-bright);
+    text-shadow: 0 0 22px rgba(201,169,97,0.25), 0 2px 0 rgba(0,0,0,0.5);
+    margin-bottom: 4px;
+  }
+  h1 .accent{ color: var(--wine-bright); }
+
+  .tagline{
+    font-style: italic;
+    color: var(--parch-deep);
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+  }
+  .tagline .sep{ color: var(--gold); margin: 0 10px; }
+
+  /* ───── main panel ───── */
+  main{
+    display:grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 24px;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .pane{
+    display:flex;
+    flex-direction:column;
+    background:
+      linear-gradient(180deg, rgba(232,220,196,0.04), rgba(232,220,196,0.02));
+    border: 1px solid rgba(201,169,97,0.28);
+    border-radius: 2px;
+    padding: 18px 20px 16px;
+    position: relative;
+    min-height: 0;
+    box-shadow:
+      inset 0 0 0 1px rgba(20,17,13,0.6),
+      inset 0 0 40px rgba(0,0,0,0.45),
+      0 0 0 1px rgba(201,169,97,0.06);
+  }
+
+  /* corner flourishes */
+  .pane::before, .pane::after,
+  .pane > .corner-tl, .pane > .corner-tr{
+    content:"";
+    position:absolute;
+    width: 14px; height: 14px;
+    border: 1px solid var(--gold);
+    opacity: 0.55;
+  }
+  .pane::before{ top:6px; left:6px; border-right:none; border-bottom:none; }
+  .pane::after{ bottom:6px; right:6px; border-left:none; border-top:none; }
+  .pane > .corner-tl{ top:6px; right:6px; border-left:none; border-bottom:none; }
+  .pane > .corner-tr{ bottom:6px; left:6px; border-right:none; border-top:none; }
+
+  .pane-label{
+    display:flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(201,169,97,0.25);
+  }
+  .pane-label .title{
+    font-family: "Cinzel", serif;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .pane-label .sub{
+    font-family: "GFS Didot", "Cormorant Garamond", serif;
+    font-size: 13px;
+    color: var(--parch-deep);
+    font-style: italic;
+    opacity: 0.7;
+  }
+
+  textarea, .output{
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--parchment);
+    font-family: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+    font-size: 20px;
+    line-height: 1.55;
+    resize: none;
+    width: 100%;
+    overflow-y: auto;
+    padding: 4px 2px;
+  }
+
+  textarea::placeholder{
+    color: rgba(232,220,196,0.30);
+    font-style: italic;
+  }
+
+  /* the Greek output gets the polytonic-friendly font */
+  .output.greek{
+    font-family: "GFS Didot", "Cormorant Garamond", "EB Garamond", serif;
+    font-size: 22px;
+    color: var(--gold-bright);
+    text-shadow: 0 0 18px rgba(201,169,97,0.18);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .output.greek:empty::before{
+    content: attr(data-placeholder);
+    color: rgba(201,169,97,0.30);
+    font-style: italic;
+    font-family: "Cormorant Garamond", serif;
+    font-size: 19px;
+  }
+
+  /* ───── center column: pipeline ───── */
+  .pipeline{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap: 14px;
+    padding: 0 6px;
+    min-width: 88px;
+  }
+  .arrow{
+    font-family:"Cinzel",serif;
+    color: var(--gold);
+    font-size: 22px;
+    opacity: 0.7;
+  }
+  .stage-label{
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: "Cinzel", serif;
+    font-size: 10px;
+    letter-spacing: 0.4em;
+    color: var(--gold-deep);
+    text-transform: uppercase;
+    padding: 8px 0;
+  }
+  .midfrench{
+    width: 100%;
+    text-align:center;
+    border-top: 1px solid rgba(201,169,97,0.18);
+    border-bottom: 1px solid rgba(201,169,97,0.18);
+    padding: 10px 4px;
+    font-family: "Cormorant Garamond", serif;
+    font-style: italic;
+    color: var(--parch-deep);
+    font-size: 15px;
+    min-height: 60px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .midfrench:empty::before{
+    content: "— en français —";
+    opacity: 0.35;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    font-style: normal;
+    font-family: "Cinzel", serif;
+  }
+
+  /* ───── controls ───── */
+  footer{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 16px;
+    padding-top: 6px;
+  }
+
+  .controls{ display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+
+  button{
+    background: linear-gradient(180deg, #1f1a13, #14110d);
+    color: var(--gold-bright);
+    border: 1px solid var(--gold-deep);
+    padding: 10px 22px;
+    font-family: "Cinzel", serif;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 1px;
+    position: relative;
+  }
+  button:hover:not(:disabled){
+    border-color: var(--gold-bright);
+    color: #fff;
+    background: linear-gradient(180deg, #2a2218, #1a1510);
+    box-shadow: 0 0 16px rgba(201,169,97,0.25), inset 0 0 12px rgba(201,169,97,0.08);
+  }
+  button:active:not(:disabled){ transform: translateY(1px); }
+  button:disabled{ opacity: 0.4; cursor: not-allowed; }
+  button.primary{
+    border-color: var(--wine-bright);
+    color: var(--wine-bright);
+  }
+  button.primary:hover:not(:disabled){
+    border-color: #d44; color: #fff;
+    box-shadow: 0 0 18px rgba(138,46,46,0.5), inset 0 0 12px rgba(138,46,46,0.15);
+  }
+
+  .toggle{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--parch-deep);
+    font-family: "Cinzel", serif;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle input{ appearance:none; width: 0; height: 0; }
+  .toggle .swatch{
+    width: 36px; height: 18px;
+    background: #1a1510;
+    border: 1px solid var(--gold-deep);
+    border-radius: 9px;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .toggle .swatch::before{
+    content:"";
+    position:absolute;
+    top:2px; left:2px;
+    width: 12px; height: 12px;
+    background: var(--gold-deep);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle input:checked + .swatch{ border-color: var(--gold-bright); background: #2a2218; }
+  .toggle input:checked + .swatch::before{
+    transform: translateX(18px);
+    background: var(--gold-bright);
+    box-shadow: 0 0 8px var(--gold-bright);
+  }
+
+  /* ───── mode segmented control ───── */
+  .modeset{
+    display: inline-flex;
+    border: 1px solid var(--gold-deep);
+    background: linear-gradient(180deg, #14110d, #0e0c08);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .modeset .seg{
+    padding: 9px 14px;
+    font-family: "Cinzel", serif;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--parch-deep);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    transition: all 0.2s;
+    border-right: 1px solid rgba(201,169,97,0.18);
+    position: relative;
+    line-height: 1;
+  }
+  .modeset .seg:last-child{ border-right: none; }
+  .modeset .seg:hover{
+    color: var(--gold-bright);
+    background: rgba(201,169,97,0.06);
+  }
+  .modeset .seg.active{
+    color: var(--gold-bright);
+    background: linear-gradient(180deg, #2a2218, #1a1510);
+    box-shadow: inset 0 0 12px rgba(201,169,97,0.18);
+    text-shadow: 0 0 8px rgba(201,169,97,0.4);
+  }
+  .modeset .seg .lang{
+    font-style: italic;
+    font-family: "Cormorant Garamond", serif;
+    text-transform: none;
+    font-size: 11px;
+    letter-spacing: 0;
+    opacity: 0.7;
+    margin-left: 4px;
+  }
+
+  .status{
+    font-family: "Cormorant Garamond", serif;
+    font-style: italic;
+    color: var(--parch-deep);
+    font-size: 13px;
+    opacity: 0.6;
+    min-height: 18px;
+  }
+  .status.error{ color: #d88; opacity: 0.9; }
+  .status.working::after{
+    content: "";
+    display: inline-block;
+    animation: dots 1.2s steps(4, end) infinite;
+  }
+  @keyframes dots{
+    0%   { content: ""; }
+    25%  { content: "."; }
+    50%  { content: ".."; }
+    75%  { content: "..."; }
+    100% { content: ""; }
+  }
+
+  /* selection */
+  ::selection{ background: var(--wine); color: var(--gold-bright); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar{ width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+  ::-webkit-scrollbar-thumb{ background: rgba(201,169,97,0.25); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover{ background: rgba(201,169,97,0.5); }
+
+  /* small screens / narrow window */
+  @media (max-width: 900px){
+    .app{ padding: 18px 22px; }
+    main{ grid-template-columns: 1fr; grid-template-rows: 1fr auto 1fr; }
+    .stage-label{ writing-mode: horizontal-tb; transform: none; }
+    .pipeline{ flex-direction: row; }
+    h1{ font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>ΚΡΥΠΤΟΣ <span class="accent">·</span> Cryptogreek</h1>
+      <div class="tagline">
+        anglais <span class="sep">❧</span> français <span class="sep">❧</span> ἑλληνικὰ γράμματα
+      </div>
+    </header>
+
+    <main>
+      <section class="pane">
+        <div class="corner-tl"></div>
+        <div class="corner-tr"></div>
+        <div class="pane-label">
+          <span class="title">I · English</span>
+          <span class="sub">plaintext</span>
+        </div>
+        <textarea id="src" placeholder="Write something in English…&#10;&#10;e.g. The eagle flies at dawn."></textarea>
+      </section>
+
+      <div class="pipeline">
+        <div class="stage-label">cipher</div>
+        <div class="arrow">⟶</div>
+        <div class="midfrench" id="midfrench"></div>
+        <div class="arrow">⟶</div>
+        <div class="stage-label">script</div>
+      </div>
+
+      <section class="pane">
+        <div class="corner-tl"></div>
+        <div class="corner-tr"></div>
+        <div class="pane-label">
+          <span class="title">II · Ἑλληνικά</span>
+          <span class="sub">en lettres grecques</span>
+        </div>
+        <div class="output greek" id="out" data-placeholder="…the cipher will appear here."></div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="controls">
+        <button id="encipher" class="primary">⚔ Encipher</button>
+        <button id="copy">Copy</button>
+        <button id="clear">Clear</button>
+
+        <div class="modeset" role="radiogroup" aria-label="Input mode">
+          <button class="seg active" data-mode="en"
+                  title="Type in English, translate to French, then to Greek letters.">
+            EN <span class="lang">→ fr → gr</span>
+          </button>
+          <button class="seg" data-mode="fr"
+                  title="Type in French (skip translation). Transliterate directly.">
+            FR <span class="lang">→ gr</span>
+          </button>
+          <button class="seg" data-mode="raw"
+                  title="Don't translate. Transliterate whatever you type, as-is.">
+            EN <span class="lang">→ gr</span>
+          </button>
+        </div>
+
+        <label class="toggle">
+          <input type="checkbox" id="livetoggle" checked>
+          <span class="swatch"></span>
+          <span>Live</span>
+        </label>
+      </div>
+      <div id="status" class="status"></div>
+    </footer>
+  </div>
+
+<script>
+  const $src       = document.getElementById('src');
+  const $out       = document.getElementById('out');
+  const $mid       = document.getElementById('midfrench');
+  const $status    = document.getElementById('status');
+  const $encipher  = document.getElementById('encipher');
+  const $copy      = document.getElementById('copy');
+  const $clear     = document.getElementById('clear');
+  const $live      = document.getElementById('livetoggle');
+
+  // Mode segmented control: 'en' (translate), 'fr' (already French), 'raw' (no translation).
+  let mode = 'en';
+  const $segs      = document.querySelectorAll('.modeset .seg');
+  const $srcLabel  = document.querySelector('section.pane:first-of-type .pane-label .title');
+  const $srcSub    = document.querySelector('section.pane:first-of-type .pane-label .sub');
+
+  const MODES = {
+    en: {
+      title:       'I · English',
+      sub:         'plaintext',
+      placeholder: 'Write something in English…\n\ne.g. The eagle flies at dawn.',
+      showMid:     true,
+    },
+    fr: {
+      title:       'I · Français',
+      sub:         'texte en clair',
+      placeholder: 'Écrivez quelque chose en français…\n\np. ex. L\u2019aigle vole à l\u2019aube.',
+      showMid:     false,
+    },
+    raw: {
+      title:       'I · Plain',
+      sub:         'no translation',
+      placeholder: 'Type anything — it will be transliterated as written.',
+      showMid:     false,
+    },
+  };
+
+  function applyMode(m){
+    mode = m;
+    const cfg = MODES[m];
+    $srcLabel.textContent = cfg.title;
+    $srcSub.textContent   = cfg.sub;
+    $src.placeholder      = cfg.placeholder;
+    $segs.forEach(s => s.classList.toggle('active', s.dataset.mode === m));
+    // hide the French intermediate column when there's no French step
+    $mid.style.opacity = cfg.showMid ? '' : '0.2';
+    if(!cfg.showMid){ $mid.textContent = ''; }
+  }
+
+  $segs.forEach(seg => seg.addEventListener('click', () => {
+    applyMode(seg.dataset.mode);
+    if($live.checked) run();
+  }));
+
+  function setStatus(msg, cls=''){
+    $status.className = 'status' + (cls ? ' ' + cls : '');
+    $status.textContent = msg;
+  }
+
+  let debounceTimer = null;
+  let inFlight = false;
+  let pendingRun = false;
+
+  async function run(){
+    const text = $src.value.trim();
+    if(!text){
+      $mid.textContent = '';
+      $out.textContent = '';
+      setStatus('');
+      return;
+    }
+    if(inFlight){ pendingRun = true; return; }
+    inFlight = true;
+    setStatus('enciphering', 'working');
+    try{
+      const resp = await fetch('/api/encipher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, mode })
+      });
+      const result = await resp.json();
+      if(result.error){
+        setStatus(result.error, 'error');
+      } else {
+        $mid.textContent = result.french || '';
+        $out.textContent = result.greek || '';
+        setStatus(result.note || '');
+      }
+    } catch (e){
+      setStatus('bridge error: ' + e.message, 'error');
+    } finally {
+      inFlight = false;
+      if(pendingRun){ pendingRun = false; run(); }
+    }
+  }
+
+  function scheduleRun(){
+    if(!$live.checked) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(run, 350);
+  }
+
+  $src.addEventListener('input', scheduleRun);
+  $encipher.addEventListener('click', run);
+
+  $copy.addEventListener('click', async () => {
+    const text = $out.textContent;
+    if(!text){ setStatus('nothing to copy'); return; }
+    try{
+      await navigator.clipboard.writeText(text);
+      setStatus('copied to clipboard');
+    } catch{
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); ta.remove();
+      setStatus('copied to clipboard');
+    }
+  });
+
+  $clear.addEventListener('click', () => {
+    $src.value = '';
+    $mid.textContent = '';
+    $out.textContent = '';
+    setStatus('');
+    $src.focus();
+  });
+
+  // Keyboard: Ctrl+Enter to force a run.
+  document.addEventListener('keydown', (e) => {
+    if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+      e.preventDefault();
+      run();
+    }
+  });
+
+  // Ready to go — Python server already serving us this page.
+  applyMode('en');
+  setStatus('ready · type to encipher');
+  $src.focus();
+
+  // When the app window closes, tell the Python server to shut itself down.
+  // `sendBeacon` is the right tool here — it works even during unload.
+  window.addEventListener('pagehide', () => {
+    try {
+      navigator.sendBeacon('/api/shutdown',
+        new Blob([''], { type: 'application/json' }));
+    } catch {}
+  });
+</script>
+</body>
+</html>
