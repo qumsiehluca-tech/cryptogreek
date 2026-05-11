@@ -3,9 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>ΚΡΥΠΤΟΣ · Cryptogreek</title>
+<!-- Favicon hierarchy: Chrome --app= will pick the largest available PNG for
+     the taskbar/dock icon, rather than scaling a small .ico up. -->
+<link rel="icon" type="image/png" sizes="1024x1024" href="/icon-1024.png">
+<link rel="icon" type="image/png" sizes="512x512"  href="/icon-512.png">
+<link rel="icon" type="image/png" sizes="256x256"  href="/icon-256.png">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=GFS+Didot&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=GFS+Didot&family=GFS+Neohellenic:wght@400;700&family=Cardo:ital,wght@0,400;0,700;1,400&family=Gentium+Plus:ital,wght@0,400;0,700;1,400&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:        #14110d;
@@ -373,6 +380,41 @@
     margin-left: 4px;
   }
 
+  /* ───── font picker ───── */
+  .fontpick{
+    appearance: none;
+    -webkit-appearance: none;
+    background:
+      linear-gradient(180deg, #1f1a13, #14110d)
+      no-repeat right 10px center / 8px 8px;
+    background-image:
+      linear-gradient(180deg, #1f1a13, #14110d),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1 L5 5 L9 1' fill='none' stroke='%23c9a961' stroke-width='1.4'/></svg>");
+    background-repeat: no-repeat, no-repeat;
+    background-position: 0 0, right 10px center;
+    background-size: 100% 100%, 10px 6px;
+    color: var(--gold-bright);
+    border: 1px solid var(--gold-deep);
+    padding: 8px 32px 8px 14px;
+    font-family: "Cinzel", serif;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 1px;
+    transition: all 0.2s;
+  }
+  .fontpick:hover{
+    border-color: var(--gold-bright);
+    box-shadow: 0 0 10px rgba(201,169,97,0.2);
+  }
+  .fontpick:focus{ outline: none; }
+  .fontpick option{
+    background: #14110d;
+    color: var(--gold-bright);
+    font-family: inherit;
+  }
+
   .status{
     font-family: "Cormorant Garamond", serif;
     font-style: italic;
@@ -460,11 +502,11 @@
         <button id="clear">Clear</button>
 
         <div class="modeset" role="radiogroup" aria-label="Input mode">
-          <button class="seg active" data-mode="en"
+          <button class="seg" data-mode="en"
                   title="Type in English, translate to French, then to Greek letters.">
             EN <span class="lang">→ fr → gr</span>
           </button>
-          <button class="seg" data-mode="fr"
+          <button class="seg active" data-mode="fr"
                   title="Type in French (skip translation). Transliterate directly.">
             FR <span class="lang">→ gr</span>
           </button>
@@ -479,6 +521,22 @@
           <span class="swatch"></span>
           <span>Live</span>
         </label>
+        <label class="toggle" title="Apply Greek morphological rules: -tion → -σιον, -eur → -ωρ, drop silent -e, etc.">
+          <input type="checkbox" id="hellenize">
+          <span class="swatch"></span>
+          <span>Hellenize</span>
+        </label>
+
+        <select id="fontpick" class="fontpick" title="Output font">
+          <option value="'GFS Didot', serif">GFS Didot</option>
+          <option value="'Cardo', serif">Cardo</option>
+          <option value="'Gentium Plus', serif">Gentium Plus</option>
+          <option value="'EB Garamond', serif">EB Garamond</option>
+          <option value="'Old Standard TT', serif">Old Standard TT</option>
+          <option value="'GFS Neohellenic', serif">GFS Neohellenic</option>
+          <option value="'IM Fell English', serif">IM Fell English</option>
+          <option value="'Cormorant Garamond', serif">Cormorant</option>
+        </select>
       </div>
       <div id="status" class="status"></div>
     </footer>
@@ -495,7 +553,7 @@
   const $live      = document.getElementById('livetoggle');
 
   // Mode segmented control: 'en' (translate), 'fr' (already French), 'raw' (no translation).
-  let mode = 'en';
+  let mode = 'fr';
   const $segs      = document.querySelectorAll('.modeset .seg');
   const $srcLabel  = document.querySelector('section.pane:first-of-type .pane-label .title');
   const $srcSub    = document.querySelector('section.pane:first-of-type .pane-label .sub');
@@ -547,6 +605,41 @@
   let inFlight = false;
   let pendingRun = false;
 
+  const $hellenize = document.getElementById('hellenize');
+  const $fontpick  = document.getElementById('fontpick');
+
+  // Remember the picks across sessions.
+  try {
+    const savedFont = localStorage.getItem('cryptogreek.font');
+    if (savedFont) $fontpick.value = savedFont;
+    const savedHel = localStorage.getItem('cryptogreek.hellenize');
+    if (savedHel === '1') $hellenize.checked = true;
+  } catch {}
+
+  function applyFont(){
+    $out.style.fontFamily = $fontpick.value;
+    try { localStorage.setItem('cryptogreek.font', $fontpick.value); } catch {}
+  }
+  applyFont();
+  $fontpick.addEventListener('change', applyFont);
+
+  // The 'mode' sent to the server combines base mode + hellenize toggle.
+  function effectiveMode(){
+    if ($hellenize.checked){
+      if (mode === 'fr')  return 'hellenize_fr';
+      if (mode === 'en')  return 'hellenize';
+      // raw + hellenize doesn't really make sense — just hellenize the raw text
+      return 'hellenize';
+    }
+    return mode;
+  }
+
+  $hellenize.addEventListener('change', () => {
+    try { localStorage.setItem('cryptogreek.hellenize',
+                               $hellenize.checked ? '1' : '0'); } catch {}
+    if ($live.checked) run();
+  });
+
   async function run(){
     const text = $src.value.trim();
     if(!text){
@@ -562,7 +655,7 @@
       const resp = await fetch('/api/encipher', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode })
+        body: JSON.stringify({ text, mode: effectiveMode() })
       });
       const result = await resp.json();
       if(result.error){
@@ -621,7 +714,7 @@
   });
 
   // Ready to go — Python server already serving us this page.
-  applyMode('en');
+  applyMode('fr');
   setStatus('ready · type to encipher');
   $src.focus();
 

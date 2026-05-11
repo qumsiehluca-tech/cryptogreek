@@ -85,20 +85,28 @@ TRANSLATOR = Translator()
 # ---------- Encipher logic ----------
 def _encipher(text: str, mode: str) -> dict:
     """
-    mode = 'en'  -> translate English to French, then transliterate
-    mode = 'fr'  -> input is already French; transliterate directly
-    mode = 'raw' -> don't translate at all; transliterate what was typed
+    mode = 'en'        -> translate English to French, then transliterate
+    mode = 'fr'        -> input is already French; transliterate directly
+    mode = 'raw'       -> don't translate at all; transliterate what was typed
+    mode = 'hellenize' -> translate English to French, then transliterate AND
+                          apply Greek morphological rules (-tion -> -σιον, etc.)
+    mode = 'hellenize_fr' -> French input + morphological rules
     """
     try:
         if not text or not text.strip():
             return {"french": "", "greek": "", "note": ""}
 
-        if mode == "fr":
-            # User typed French — skip translation entirely.
+        # Two "morph" modes share the same flag.
+        hellenize = mode in ("hellenize", "hellenize_fr")
+
+        if mode in ("fr", "hellenize_fr"):
+            note = "français → grec"
+            if hellenize:
+                note += " (hellénisé)"
             return {
-                "french": "",   # nothing to show in the middle column
-                "greek": transliterate(text),
-                "note": "français → grec (no translation)",
+                "french": "",
+                "greek": transliterate(text, hellenize=hellenize),
+                "note": note,
             }
 
         if mode == "raw":
@@ -108,9 +116,13 @@ def _encipher(text: str, mode: str) -> dict:
                 "note": "transliterated as-is (no translation)",
             }
 
-        # Default: English -> French -> Greek
+        # Default 'en' or 'hellenize' (English with optional morph rules).
         french, note = TRANSLATOR.translate(text)
-        return {"french": french, "greek": transliterate(french), "note": note}
+        return {
+            "french": french,
+            "greek": transliterate(french, hellenize=hellenize),
+            "note": note + (" · hellénisé" if hellenize else ""),
+        }
     except Exception as e:
         traceback.print_exc()
         return {"error": f"{type(e).__name__}: {e}"}
@@ -141,6 +153,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/icon.png":
             p = os.path.join(HERE, "icon.png")
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    self._serve_bytes(f.read(), "image/png")
+                return
+        # High-res icons for Chrome --app= taskbar
+        if path in ("/icon-256.png", "/icon-512.png", "/icon-1024.png"):
+            p = os.path.join(HERE, path.lstrip("/"))
             if os.path.exists(p):
                 with open(p, "rb") as f:
                     self._serve_bytes(f.read(), "image/png")
@@ -179,7 +198,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = payload.get("mode")
             if mode is None:
                 mode = "raw" if payload.get("skip_translate") else "en"
-            if mode not in {"en", "fr", "raw"}:
+            if mode not in {"en", "fr", "raw", "hellenize", "hellenize_fr"}:
                 mode = "en"
             result = _encipher(text, mode)
             self._serve_bytes(json.dumps(result, ensure_ascii=False).encode("utf-8"))

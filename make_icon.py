@@ -65,8 +65,13 @@ def draw_meander(draw, x, y, units, unit_w, unit_h, color, width, mirror=False):
 
 
 def render(size: int) -> Image.Image:
-    # Supersample for crisp edges
-    scale = 4 if size <= 128 else 2
+    # Supersample to 1024-2048px internal, downsample with Lanczos.
+    # Small icons get the most supersampling (4x or 8x); big ones less
+    # (since they're already large), but we never go below 1024 internal.
+    target_internal = max(size * 4, 1024)
+    if target_internal > 2048:
+        target_internal = 2048
+    scale = max(1, target_internal // size)
     S = size * scale
     canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
@@ -158,14 +163,27 @@ def render(size: int) -> Image.Image:
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    sizes = [16, 24, 32, 48, 64, 128, 256]
-    images = [render(s) for s in sizes]
+
+    # Embed every standard Windows icon size up to 256.  Windows picks the
+    # closest match for each context (16 for the title bar, 32-40 for the
+    # taskbar, 256 for the "Extra Large icons" view in Explorer).
+    ico_sizes = [16, 24, 32, 48, 64, 96, 128, 192, 256]
+    images = [render(s) for s in ico_sizes]
     ico_path = os.path.join(here, "icon.ico")
-    images[-1].save(ico_path, format="ICO", sizes=[(s, s) for s in sizes])
-    png_path = os.path.join(here, "icon.png")
-    render(512).save(png_path)
-    print(f"Wrote {ico_path}")
-    print(f"Wrote {png_path}")
+    images[-1].save(ico_path, format="ICO", sizes=[(s, s) for s in ico_sizes])
+    print(f"Wrote {ico_path} ({len(ico_sizes)} embedded sizes)")
+
+    # A big PNG for previews and for Chrome's --app= window icon. Chrome can
+    # use a high-res PNG via <link rel="icon"> and downsample it crisply
+    # for the taskbar; that looks sharper than the legacy ICO scaling.
+    for sz in (256, 512, 1024):
+        p = os.path.join(here, f"icon-{sz}.png")
+        render(sz).save(p)
+        print(f"Wrote {p}")
+
+    # Convenience copy at the default name.
+    render(512).save(os.path.join(here, "icon.png"))
+    print(f"Wrote {os.path.join(here, 'icon.png')}")
 
 
 if __name__ == "__main__":

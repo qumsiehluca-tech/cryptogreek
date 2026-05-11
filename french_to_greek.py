@@ -152,12 +152,8 @@ SINGLE_MAP = {
 }
 
 
-def transliterate(text: str) -> str:
-    # 1. Mark rough breathing for h (before digraphs, so 'ch'/'ph'/'th' are untouched —
-    #    actually we need digraphs FIRST so 'ch' isn't seen as c+h).
-    # Re-order: digraphs first, then h, then c, then single map.
-
-    # 1. Digraphs.
+def transliterate(text: str, hellenize: bool = False) -> str:
+    # 1. Digraphs (ch, th, ph, qu) before everything.
     for pat, rep in DIGRAPHS:
         text = re.sub(pat, rep, text)
 
@@ -173,22 +169,28 @@ def transliterate(text: str) -> str:
         if ch in SINGLE_MAP:
             out.append(SINGLE_MAP[ch])
         else:
-            # Combining marks, punctuation, digits, already-Greek chars -> keep.
             out.append(ch)
     result = "".join(out)
 
-    # 5. Normalize: decompose, then reorder so the rough breathing (̔) comes
-    # before any accent marks on the same base — that's the order Unicode's
-    # precomposed Greek polytonic glyphs expect — then recompose.
+    # 5. Reorder combining marks (breathing before accents) and compose.
     result = unicodedata.normalize("NFD", result)
     result = _reorder_breathing(result)
     result = unicodedata.normalize("NFC", result)
 
-    # 6. Final-sigma: lowercase σ at the end of a word becomes ς.
-    # "End of word" = followed by anything that isn't a Greek/Latin letter,
-    # or the end of the string. Apostrophes count as word boundaries
-    # (so j'aime -> ζ'αιμε with no sigma anyway, but la maisons -> λα μαισονς).
+    # 6. Coronis for elision: ' or ' between letters -> ᾽ (Greek koronis).
+    result = _apply_coronis(result)
+
+    # 7. Optional: morphological hellenization (-tion -> -σιον, -e silent, etc.)
+    if hellenize:
+        result = _hellenize(result)
+
+    # 8. Final-sigma: lowercase σ at end-of-word -> ς. (After hellenize so
+    # newly-introduced sigmas at word-end also get the right form.)
     result = _apply_final_sigma(result)
+
+    # 9. Acute -> grave on ultima before another word (Ancient Greek rule).
+    result = _apply_grave_rule(result)
+
     return result
 
 
@@ -244,6 +246,233 @@ def _reorder_breathing(s: str) -> str:
             out.extend(breathing + rest)
         i = j
     return "".join(out)
+
+
+# ----------------------------------------------------------------------------
+# Coronis (᾽) for elisions
+# ----------------------------------------------------------------------------
+# When an apostrophe sits between two letters (as in j'aime, l'homme,
+# qu'est-ce), it marks an elision. Ancient Greek wrote this with a 'koronis',
+# U+1FBD, which looks like a high comma but is the proper character. We
+# replace any flavour of apostrophe (ASCII ', curly ', curly ') in that
+# context. Standalone apostrophes (e.g. as quotation marks) are left alone.
+
+CORONIS = "\u1FBD"   # ᾽
+_APOSTROPHES = {"'", "\u2019", "\u2018", "\u02BC"}  # straight + curly + modifier
+
+def _apply_coronis(s: str) -> str:
+    out = list(s)
+    n = len(out)
+    for i, ch in enumerate(out):
+        if ch in _APOSTROPHES:
+            prev = out[i - 1] if i > 0 else ""
+            nxt  = out[i + 1] if i + 1 < n else ""
+            if _is_word_char(prev) and _is_word_char(nxt):
+                out[i] = CORONIS
+    return "".join(out)
+
+
+# ----------------------------------------------------------------------------
+# Ancient-Greek acute-to-grave rule
+# ----------------------------------------------------------------------------
+# In a connected sentence, an acute accent on the ultima (last syllable)
+# becomes a grave when another word follows (and that word isn't an
+# enclitic, and isn't sentence-final / before punctuation).
+#
+# We approximate "another word follows" as: the next non-whitespace char
+# after the word is a letter (i.e. another word, not punctuation, not end).
+
+# Mapping of Greek vowels with acute (tonos) -> the same vowel with grave (varia).
+_ACUTE_TO_GRAVE = {
+    "ά": "ὰ", "Ά": "Ὰ",
+    "έ": "ὲ", "Έ": "Ὲ",
+    "ή": "ὴ", "Ή": "Ὴ",
+    "ί": "ὶ", "Ί": "Ὶ",
+    "ό": "ὸ", "Ό": "Ὸ",
+    "ύ": "ὺ", "Ύ": "Ὺ",
+    "ώ": "ὼ", "Ώ": "Ὼ",
+    # acute + smooth/rough breathing combos
+    "ἄ": "ἂ", "ἅ": "ἃ", "Ἄ": "Ἂ", "Ἅ": "Ἃ",
+    "ἔ": "ἒ", "ἕ": "ἓ", "Ἔ": "Ἒ", "Ἕ": "Ἓ",
+    "ἤ": "ἢ", "ἥ": "ἣ", "Ἤ": "Ἢ", "Ἥ": "Ἣ",
+    "ἴ": "ἲ", "ἵ": "ἳ", "Ἴ": "Ἲ", "Ἵ": "Ἳ",
+    "ὄ": "ὂ", "ὅ": "ὃ", "Ὄ": "Ὂ", "Ὅ": "Ὃ",
+    "ὔ": "ὒ", "ὕ": "ὓ",           "Ὕ": "Ὓ",
+    "ὤ": "ὢ", "ὥ": "ὣ", "Ὤ": "Ὢ", "Ὥ": "Ὣ",
+}
+
+def _apply_grave_rule(s: str) -> str:
+    """If a word's last syllable carries an acute and the very next word in
+    the text is also a letter (i.e. another word follows in the same breath),
+    swap that acute for a grave.
+
+    Approximation of 'last syllable': the rightmost acute-bearing vowel must
+    not be followed by any other vowel within the same word. (A vowel after
+    it would mean the acute is NOT on the ultima.)
+    """
+    i = 0
+    n = len(s)
+    out = list(s)
+    while i < n:
+        if not _is_word_char(out[i]):
+            i += 1
+            continue
+        # Find end of current word.
+        j = i
+        while j < n and (_is_word_char(out[j]) or out[j] == CORONIS):
+            j += 1
+        # Skip whitespace, see if a word follows.
+        k = j
+        while k < n and out[k].isspace():
+            k += 1
+        following_is_word = (k < n and _is_word_char(out[k]))
+
+        if following_is_word:
+            # Find rightmost acute-bearing vowel.
+            for x in range(j - 1, i - 1, -1):
+                ch = out[x]
+                if ch in _ACUTE_TO_GRAVE:
+                    # Check: are there other vowels AFTER position x in the word?
+                    has_vowel_after = any(
+                        _strip_one_accent(out[y]) in _GREEK_VOWELS_LOW
+                        for y in range(x + 1, j)
+                    )
+                    if not has_vowel_after:
+                        out[x] = _ACUTE_TO_GRAVE[ch]
+                    break
+        i = j
+    return "".join(out)
+
+
+def _strip_one_accent(ch: str) -> str:
+    """Lowercase + strip combining marks from a single character."""
+    d = unicodedata.normalize("NFD", ch.lower())
+    return "".join(c for c in d if not unicodedata.combining(c))
+
+
+# ----------------------------------------------------------------------------
+# Hellenize: morphological substitution mode
+# ----------------------------------------------------------------------------
+# Applies on the already-transliterated Greek-letter text, word by word.
+# Substitutions are anchored to word-end and tried longest-first.
+
+# Each rule is (suffix_in_greek_letters, replacement). The suffixes are what
+# the French endings become AFTER transliteration. The rules apply to a
+# lowercase view of the word; the script preserves the original case.
+_HELLENIZE_RULES = [
+    # 6-char suffixes
+    ("μεντε", "μενος"),    # rare; -mment-e?
+
+    # 5-char
+    ("τιον", "σιον"),      # nation -> νατιον -> νασιον (post-c-rule)
+    ("σιον", "σιον"),      # already
+    ("τριχε", "τρις"),     # actrice -> ακτριχε -> ακτρις
+    ("μεντ", "μεν"),       # adverbial -ment: parlment ... actually leave
+    ("ισμε", "ισμος"),     # idealisme -> ιδεαλισμε -> ιδεαλισμος
+    ("ιστε", "ιστης"),     # artiste -> αρτιστε -> αρτιστης
+    ("ικε",  "ικος"),      # politique -> πολιτικε -> πολιτικος
+    ("ιτέ",  "οτης"),      # liberté/égalité -> -ιτέ -> -οτης
+    ("ιτε",  "οτης"),      # same without accent
+    ("ευχ",  "ος"),        # -eux -> -ευχ -> -ος (heureux, dangereux)
+    ("ευσε", "ωσα"),       # -euse (fem) -> -ωσα
+
+    # 4-char
+    ("ευρ",  "ωρ"),        # docteur -> δοκτευρ -> δοκτωρ
+    ("εαυ",  "ος"),        # bateau -> βατεαυ -> βατος
+    ("αυτ",  "ος"),        # haut, défaut endings
+    ("αυδ",  "ος"),        # similar
+
+    # 3-char  (-ie at end as "ιε" -> "ια"; only on words >=4 chars)
+    ("ιε",  "ια"),         # philosophie -> -ιε -> -ια
+
+    # 2-char  silent -e
+    # (handled separately below — needs more care)
+]
+
+# Set of single vowels (lowercase Greek) for the silent-e check.
+_GREEK_VOWELS_LOW = set("αεηιουωάέήίόύώὰὲὴὶὸὺὼᾶῆῖῦῶἀἁἐἑἠἡἰἱὀὁὐὑὠὡἄἅἔἕἤἥἴἵὄὅὔὕὤὥἂἃἒἓἢἣἲἳὂὃὒὓὢὣᾳῃῳ")
+
+def _hellenize(s: str) -> str:
+    """Apply morphological substitutions word-by-word."""
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        if not _is_word_char(s[i]):
+            out.append(s[i])
+            i += 1
+            continue
+        # Collect a word
+        j = i
+        while j < n and (_is_word_char(s[j]) or s[j] == CORONIS):
+            j += 1
+        word = s[i:j]
+        out.append(_hellenize_word(word))
+        i = j
+    return "".join(out)
+
+def _hellenize_word(word: str) -> str:
+    """Apply suffix rewrites to a single word, plus the silent-e + double-consonant rules."""
+    if not word:
+        return word
+
+    # Skip very short words — they're usually function words that don't
+    # benefit from morphological rewriting and break easily.
+    if len(word) <= 2:
+        return word
+
+    # Reduce double consonants to single (Greek pattern). Do this BEFORE
+    # suffix rewriting so e.g. "βελλε" -> "βελε" -> drop final ε.
+    word = _collapse_doubles(word)
+
+    # Try suffix replacement rules, longest first (they're already ordered).
+    lower = _strip_accents_lower(word)
+    for suffix, replacement in _HELLENIZE_RULES:
+        if lower.endswith(suffix):
+            stem = word[: len(word) - len(suffix)]
+            # Preserve initial capitalization if the original word was capitalized.
+            new = stem + replacement
+            if word[0].isupper():
+                new = new[0].upper() + new[1:]
+            return new
+
+    # No suffix matched — handle silent final-e (single ε at end after a consonant).
+    return _drop_silent_e(word)
+
+
+def _collapse_doubles(word: str) -> str:
+    """λλ -> λ, ττ -> τ, σσ -> σ, etc. — but only consonants."""
+    consonants = set("βγδζθκλμνξπρσςτφχψ")
+    out = []
+    prev = ""
+    for ch in word:
+        if ch.lower() in consonants and ch.lower() == prev.lower():
+            continue   # skip the duplicate
+        out.append(ch)
+        prev = ch
+    return "".join(out)
+
+
+def _drop_silent_e(word: str) -> str:
+    """If the word ends in unstressed ε after a consonant, drop it.
+    This mirrors French silent-e at end of word."""
+    if len(word) < 3:
+        return word
+    last = word[-1]
+    second_last = word[-2]
+    # Only drop a bare ε (unaccented) — never έ, η, ή, etc.
+    if last.lower() != "ε":
+        return word
+    # Don't drop if there's only one consonant cluster — leaves words too short.
+    if second_last.lower() in _GREEK_VOWELS_LOW:
+        return word
+    return word[:-1]
+
+
+def _strip_accents_lower(s: str) -> str:
+    """Lowercase + strip combining marks for comparison purposes."""
+    d = unicodedata.normalize("NFD", s.lower())
+    return "".join(ch for ch in d if not unicodedata.combining(ch))
 
 
 # ---------- CLI ----------
