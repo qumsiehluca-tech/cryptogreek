@@ -23,7 +23,7 @@ Rules:
   - ï, ü, ÿ -> diaeresis dropped (no good Greek equivalent on these)
   - h  -> rough breathing ( ῾ ) on the following vowel; if no vowel follows, dropped
   - y  -> υ
-  - w  -> ου
+  - w  -> ω    (omega — rare in French; mostly affects English loanwords)
   - v  -> β
 
 Usage:
@@ -142,7 +142,7 @@ SINGLE_MAP = {
     "û": "ῦ", "Û": "Ῠ",
     "ü": "υ", "Ü": "Υ",
     "v": "β", "V": "Β",
-    "w": "ου", "W": "Ου",
+    "w": "ω", "W": "Ω",
     "x": "χ", "X": "Χ",
     "y": "υ", "Y": "Υ",
     "ÿ": "υ", "Ÿ": "Υ",
@@ -152,7 +152,8 @@ SINGLE_MAP = {
 }
 
 
-def transliterate(text: str, hellenize: bool = False) -> str:
+def transliterate(text: str, hellenize: bool = False,
+                  accents: bool = False) -> str:
     # 1. Digraphs (ch, th, ph, qu) before everything.
     for pat, rep in DIGRAPHS:
         text = re.sub(pat, rep, text)
@@ -184,11 +185,15 @@ def transliterate(text: str, hellenize: bool = False) -> str:
     if hellenize:
         result = _hellenize(result)
 
-    # 8. Final-sigma: lowercase σ at end-of-word -> ς. (After hellenize so
-    # newly-introduced sigmas at word-end also get the right form.)
+    # 8. Final-sigma: lowercase σ at end-of-word -> ς.
     result = _apply_final_sigma(result)
 
-    # 9. Acute -> grave on ultima before another word (Ancient Greek rule).
+    # 9. Optional: add proper Ancient Greek accent + breathing marks on words
+    # that don't already have them.
+    if accents:
+        result = _add_greek_accents(result)
+
+    # 10. Acute -> grave on ultima before another word (Ancient Greek rule).
     result = _apply_grave_rule(result)
 
     return result
@@ -359,34 +364,45 @@ def _strip_one_accent(ch: str) -> str:
 # Each rule is (suffix_in_greek_letters, replacement). The suffixes are what
 # the French endings become AFTER transliteration. The rules apply to a
 # lowercase view of the word; the script preserves the original case.
+# Each rule is (suffix_in_greek_letters, replacement, min_word_length).
+# Suffixes are what the French endings become AFTER transliteration. Rules
+# apply to a lowercase view of the word; the script preserves the original
+# case. Longer suffixes go first so they win over shorter ones.
 _HELLENIZE_RULES = [
-    # 6-char suffixes
-    ("μεντε", "μενος"),    # rare; -mment-e?
-
     # 5-char
-    ("τιον", "σιον"),      # nation -> νατιον -> νασιον (post-c-rule)
-    ("σιον", "σιον"),      # already
-    ("τριχε", "τρις"),     # actrice -> ακτριχε -> ακτρις
-    ("μεντ", "μεν"),       # adverbial -ment: parlment ... actually leave
-    ("ισμε", "ισμος"),     # idealisme -> ιδεαλισμε -> ιδεαλισμος
-    ("ιστε", "ιστης"),     # artiste -> αρτιστε -> αρτιστης
-    ("ικε",  "ικος"),      # politique -> πολιτικε -> πολιτικος
-    ("ιτέ",  "οτης"),      # liberté/égalité -> -ιτέ -> -οτης
-    ("ιτε",  "οτης"),      # same without accent
-    ("ευχ",  "ος"),        # -eux -> -ευχ -> -ος (heureux, dangereux)
-    ("ευσε", "ωσα"),       # -euse (fem) -> -ωσα
+    ("τιον", "σιον",   5),    # nation -> νατιον -> νασιον (post-c)
+    ("σιον", "σιον",   5),    # already σιον
+    ("τριχε","τρις",   6),    # actrice -> ακτριχε -> ακτρις
+    ("ισμε", "ισμος",  5),    # optimisme -> οπτιμισμε -> οπτιμισμος
+    ("ιστε", "ιστης",  5),    # artiste -> αρτιστε -> αρτιστης
+    ("ικε",  "ικος",   5),    # politique -> πολιτικε -> πολιτικος
+    ("ιτέ",  "οτης",   5),    # liberté/égalité
+    ("ιτε",  "οτης",   5),    # same without accent
+    ("ευχ",  "ος",     5),    # heureux -> ἑυρευχ -> ἑυρος
+    ("ευσε", "ωσα",    5),    # amoureuse -> αμουρευσε -> αμουρωσα
+
+    # ---- verb-ish endings ----
+    # French infinitive -er (aimer, parler, donner) -> -εω (Greek contract verb)
+    ("ερ",   "εω",     4),
+    # French infinitive -ir (finir, partir) -> -ειν (Greek active infinitive)
+    ("ιρ",   "ειν",    4),
+    # 3rd person plural -ent (parlent, aiment) -> -ουσι
+    ("εντ",  "ουσι",   5),
+    # 1st person plural -ons (parlons) -> -ομεν  (sigma medial; rules run pre-final-sigma)
+    ("ονσ",  "ομεν",   5),
+    # 2nd person plural -ez (parlez) -> -ετε
+    ("εζ",   "ετε",    4),
 
     # 4-char
-    ("ευρ",  "ωρ"),        # docteur -> δοκτευρ -> δοκτωρ
-    ("εαυ",  "ος"),        # bateau -> βατεαυ -> βατος
-    ("αυτ",  "ος"),        # haut, défaut endings
-    ("αυδ",  "ος"),        # similar
+    ("ευρ",  "ωρ",     4),    # docteur, professeur
+    ("εαυ",  "ος",     5),    # bateau -> βατεαυ -> βατος
+    ("αυτ",  "ος",     5),    # haut, défaut endings
+    ("αυδ",  "ος",     5),    # similar
 
-    # 3-char  (-ie at end as "ιε" -> "ια"; only on words >=4 chars)
-    ("ιε",  "ια"),         # philosophie -> -ιε -> -ια
+    # 3-char
+    ("ιε",   "ια",     4),    # philosophie -> -ιε -> -ια
 
-    # 2-char  silent -e
-    # (handled separately below — needs more care)
+    # 2-char silent -e (handled separately below)
 ]
 
 # Set of single vowels (lowercase Greek) for the silent-e check.
@@ -427,7 +443,9 @@ def _hellenize_word(word: str) -> str:
 
     # Try suffix replacement rules, longest first (they're already ordered).
     lower = _strip_accents_lower(word)
-    for suffix, replacement in _HELLENIZE_RULES:
+    for suffix, replacement, min_len in _HELLENIZE_RULES:
+        if len(word) < min_len:
+            continue
         if lower.endswith(suffix):
             stem = word[: len(word) - len(suffix)]
             # Preserve initial capitalization if the original word was capitalized.
@@ -473,6 +491,325 @@ def _strip_accents_lower(s: str) -> str:
     """Lowercase + strip combining marks for comparison purposes."""
     d = unicodedata.normalize("NFD", s.lower())
     return "".join(ch for ch in d if not unicodedata.combining(ch))
+
+
+# ============================================================================
+# Greek accent engine
+# ============================================================================
+# Adds smooth/rough breathing on vowel-initial words and places acute or
+# circumflex accents following the rules in your guide:
+#   - acute on any of the last three syllables;
+#   - circumflex only on penult or ultima, and only on a long syllable;
+#   - the "trochee rule": if a word ends long-short and the accent falls on
+#     the penult, that penult accent must be a circumflex;
+#   - rule 4: if the ultima is long, the acute can't be antepenult.
+# We default to recessive (verb-like) accentuation: as far back as the rules
+# allow, since we have no grammatical info to do otherwise.
+
+# Unaccented base vowels (the bare letters before any marks).
+_BASE_VOWELS = set("αεηιουω")
+
+# Long vowels (the inherently long ones).
+_LONG_BASES   = set("ηω")
+_SHORT_BASES  = set("εο")
+# α ι υ are ambiguous; treated as short by default (we have no length info).
+
+# Greek diphthongs (always counted as a single long syllable).
+_DIPHTHONGS = {
+    "αι","ει","οι","υι","αυ","ευ","ου","ηυ","ωυ",
+}
+# Iota subscripts (ᾳ ῃ ῳ etc.) count as long as well, but we don't generate them.
+
+# Combining marks
+COMB_ACUTE       = "\u0301"   # ´  (tonos)
+COMB_GRAVE       = "\u0300"   # `  (varia)
+COMB_CIRCUMFLEX  = "\u0342"   # ͂  (perispomeni)
+COMB_SMOOTH      = "\u0313"   # ᾿  (psili)
+COMB_ROUGH       = "\u0314"   # ̔  (dasia)
+
+_ACCENT_COMB = {COMB_ACUTE, COMB_GRAVE, COMB_CIRCUMFLEX}
+_BREATHING_COMB = {COMB_SMOOTH, COMB_ROUGH}
+
+
+def _word_has_accent(word: str) -> bool:
+    """True if any character in the word carries an acute, grave, or circumflex."""
+    d = unicodedata.normalize("NFD", word)
+    return any(c in _ACCENT_COMB for c in d)
+
+
+def _word_has_breathing(word: str) -> bool:
+    """True if any character carries a smooth or rough breathing."""
+    d = unicodedata.normalize("NFD", word)
+    return any(c in _BREATHING_COMB for c in d)
+
+
+def _syllabify(word: str) -> list[tuple[int, int]]:
+    """Split a word into syllables. Returns a list of (start, end) character
+    ranges over the *decomposed* form. Each syllable contains exactly one
+    vowel nucleus (a vowel or a diphthong).
+
+    Standard Greek syllabification: consonants between vowels go with the
+    FOLLOWING syllable (a single intervocalic consonant always; two or more
+    consonants are split mostly at the first one — but for our purposes the
+    coarse rule is fine since we only care about which syllable holds the
+    nucleus, not the precise consonant boundary).
+    """
+    d = unicodedata.normalize("NFD", word.lower())
+    # Track positions of bare vowels and diphthongs.
+    nuclei = []   # list of (start_idx_in_d, length_in_chars_excluding_marks)
+    i = 0
+    n = len(d)
+    while i < n:
+        ch = d[i]
+        if ch in _BASE_VOWELS:
+            # Look ahead for a diphthong. Skip combining marks between.
+            j = i + 1
+            while j < n and unicodedata.combining(d[j]):
+                j += 1
+            if j < n and d[j] in _BASE_VOWELS and (ch + d[j]) in _DIPHTHONGS:
+                # Make sure the second vowel doesn't itself carry an accent
+                # or diaeresis that would split the diphthong.
+                k = j + 1
+                second_has_accent = False
+                while k < n and unicodedata.combining(d[k]):
+                    if d[k] in _ACCENT_COMB or d[k] == "\u0308":  # diaeresis
+                        second_has_accent = True
+                    k += 1
+                if not second_has_accent:
+                    nuclei.append((i, k))
+                    i = k
+                    continue
+            # Single vowel nucleus; consume any combining marks on it.
+            j = i + 1
+            while j < n and unicodedata.combining(d[j]):
+                j += 1
+            nuclei.append((i, j))
+            i = j
+        else:
+            i += 1
+    # Build syllable spans by carving the consonants:
+    # syllable k owns [prev_end .. nuclei[k].end), except the first owns
+    # [0 .. nuclei[0].end).
+    syllables = []
+    prev_end = 0
+    for idx, (n_start, n_end) in enumerate(nuclei):
+        if idx == 0:
+            syllables.append((0, n_end))
+        else:
+            # Consonants between previous nucleus and this one: send the
+            # last consonant to the current syllable, earlier ones stay
+            # with the previous. (Approximation.)
+            prev_nuc_end = nuclei[idx - 1][1]
+            cluster = list(range(prev_nuc_end, n_start))
+            if len(cluster) <= 1:
+                # 0 or 1 consonant — goes to current syllable.
+                curr_start = prev_nuc_end
+            else:
+                # 2+ consonants — split: leave one on the previous syllable,
+                # the rest go to current. (Real rules are subtler — stop+liquid
+                # stays together — but this works for accent purposes.)
+                curr_start = prev_nuc_end + 1
+            # Adjust the previous syllable's end if we kept some consonants.
+            ps, pe = syllables[-1]
+            syllables[-1] = (ps, curr_start)
+            syllables.append((curr_start, n_end))
+    # Stretch the last syllable to absorb trailing consonants.
+    if syllables:
+        s, e = syllables[-1]
+        syllables[-1] = (s, n)
+    return syllables
+
+
+def _syllable_is_long(word_d: str, span: tuple[int, int]) -> bool:
+    """A syllable is long if its nucleus is η, ω, or a diphthong.
+    α, ι, υ default to short (we have no length info from a transliteration)."""
+    s, e = span
+    text = word_d[s:e]
+    # Find the vowel nucleus
+    bases = [c for c in text if c in _BASE_VOWELS]
+    if not bases:
+        return False
+    if len(bases) >= 2:
+        # Diphthong
+        dipht = bases[0] + bases[1]
+        if dipht in _DIPHTHONGS:
+            return True
+    return bases[0] in _LONG_BASES
+
+
+def _add_greek_accents(text: str) -> str:
+    """Walk through the text word-by-word and add breathings + accents
+    on any word that doesn't already have them."""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if not _is_word_char(text[i]):
+            out.append(text[i])
+            i += 1
+            continue
+        # Collect the word.
+        j = i
+        while j < n and (_is_word_char(text[j]) or text[j] == CORONIS):
+            j += 1
+        word = text[i:j]
+        out.append(_accent_word(word))
+        i = j
+    return "".join(out)
+
+
+def _accent_word(word: str) -> str:
+    """Add breathing + accent to a single word, if it doesn't have them already."""
+    if len(word) <= 1:
+        return word
+    d = unicodedata.normalize("NFD", word)
+
+    if _word_has_accent(d):
+        return word
+
+    has_breathing = _word_has_breathing(d)
+
+    syllables = _syllabify(word)
+    if not syllables:
+        return word
+    d_lower = d.lower()
+
+    # Plan both insertions BEFORE applying any, so the indices we compute
+    # against the original decomposed string stay valid.
+    breathing_idx = None
+    if not has_breathing:
+        first_letter = _first_letter_idx(d)
+        if first_letter < len(d_lower) and d_lower[first_letter] in _BASE_VOWELS:
+            # Initial diphthong: breathing on the 2nd vowel.
+            second_idx = first_letter + 1
+            while second_idx < len(d_lower) and unicodedata.combining(d_lower[second_idx]):
+                second_idx += 1
+            if (second_idx < len(d_lower)
+                    and d_lower[second_idx] in _BASE_VOWELS
+                    and (d_lower[first_letter] + d_lower[second_idx]) in _DIPHTHONGS):
+                breathing_idx = second_idx
+            else:
+                breathing_idx = first_letter
+
+    accent_idx, accent_mark = _choose_accent(d_lower, syllables)
+
+    # Apply insertions right-to-left so earlier indices remain valid.
+    insertions = []
+    if breathing_idx is not None:
+        insertions.append((breathing_idx, COMB_SMOOTH))
+    if accent_idx is not None and accent_mark is not None:
+        insertions.append((accent_idx, accent_mark))
+    insertions.sort(key=lambda t: t[0], reverse=True)
+    for idx, mark in insertions:
+        d = _insert_combining(d, idx, mark)
+
+    # Reorder so breathings come before accents on the same base, then NFC.
+    d = _reorder_marks(d)
+    return unicodedata.normalize("NFC", d)
+
+
+def _reorder_marks(s: str) -> str:
+    """Within each cluster of combining marks on a base, put breathings
+    first, then accents. This is the order Unicode's precomposed Greek
+    polytonic glyphs expect (e.g. ο + ̔ + ́ -> ὅ)."""
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        out.append(s[i])
+        j = i + 1
+        marks = []
+        while j < n and unicodedata.combining(s[j]):
+            marks.append(s[j])
+            j += 1
+        if marks:
+            breathings = [m for m in marks if m in _BREATHING_COMB]
+            accents    = [m for m in marks if m in _ACCENT_COMB]
+            others     = [m for m in marks
+                          if m not in _BREATHING_COMB and m not in _ACCENT_COMB]
+            out.extend(others + breathings + accents)
+        i = j
+    return "".join(out)
+
+
+def _first_letter_idx(d: str) -> int:
+    """Index of the first actual letter (not a combining mark) in a decomposed string."""
+    for idx, ch in enumerate(d):
+        if not unicodedata.combining(ch):
+            return idx
+    return 0
+
+
+def _insert_combining(d: str, base_idx: int, mark: str) -> str:
+    """Insert a combining mark immediately after the base char at base_idx,
+    in front of any existing combining marks on that base. (NFC re-ordering
+    will sort them properly later.)"""
+    return d[: base_idx + 1] + mark + d[base_idx + 1:]
+
+
+def _choose_accent(d_lower: str, syllables) -> tuple[int | None, str | None]:
+    """Apply rules 3-5 from the guide:
+       - The default is recessive: as far back as the rules allow.
+       - Acute on antepenult only if ultima is short.
+       - Penult accent: if the penult is long AND the ultima is short, use
+         circumflex (the trochee rule, §5); otherwise acute.
+       - For monosyllables: circumflex if the syllable is long, acute otherwise.
+
+       Returns (base_char_index_in_d_lower, combining_mark) or (None, None).
+    """
+    nsyll = len(syllables)
+    if nsyll == 0:
+        return None, None
+
+    # Find the index of the FIRST vowel char in each syllable (where the
+    # accent mark will attach — for diphthongs, the second vowel by convention).
+    def accent_target(span):
+        s, e = span
+        # Collect indices of base vowels within the syllable.
+        vowel_idxs = [k for k in range(s, e) if d_lower[k] in _BASE_VOWELS]
+        if not vowel_idxs:
+            return None
+        if len(vowel_idxs) >= 2:
+            # diphthong — accent goes on the SECOND element by Greek convention
+            return vowel_idxs[1]
+        return vowel_idxs[0]
+
+    if nsyll == 1:
+        # Monosyllable: circumflex on long syllables, acute on short.
+        target = accent_target(syllables[0])
+        if target is None:
+            return None, None
+        if _syllable_is_long(d_lower, syllables[0]):
+            return target, COMB_CIRCUMFLEX
+        return target, COMB_ACUTE
+
+    ultima = syllables[-1]
+    penult = syllables[-2]
+    ultima_long = _syllable_is_long(d_lower, ultima)
+    penult_long = _syllable_is_long(d_lower, penult)
+
+    if nsyll >= 3 and not ultima_long:
+        # Try antepenult acute (rule 4: only allowed if ultima is short).
+        antepenult = syllables[-3]
+        target = accent_target(antepenult)
+        if target is not None:
+            return target, COMB_ACUTE
+
+    # Penult accent. Trochee rule (§5): if penult is long and ultima is short,
+    # the penult accent MUST be circumflex.
+    target = accent_target(penult)
+    if target is not None:
+        if penult_long and not ultima_long:
+            return target, COMB_CIRCUMFLEX
+        return target, COMB_ACUTE
+
+    # Fallback to ultima.
+    target = accent_target(ultima)
+    if target is None:
+        return None, None
+    if ultima_long:
+        return target, COMB_CIRCUMFLEX
+    return target, COMB_ACUTE
 
 
 # ---------- CLI ----------

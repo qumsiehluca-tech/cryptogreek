@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from french_to_greek import transliterate
+from latin_to_greek import transliterate_latin
 
 
 # ---------- Resource resolution (works in dev or frozen) ----------
@@ -83,46 +84,56 @@ TRANSLATOR = Translator()
 
 
 # ---------- Encipher logic ----------
-def _encipher(text: str, mode: str) -> dict:
+def _encipher(text: str, mode: str, accents: bool = False) -> dict:
     """
     mode = 'en'        -> translate English to French, then transliterate
     mode = 'fr'        -> input is already French; transliterate directly
+    mode = 'la'        -> input is Latin; transliterate with Latin-stress accents
     mode = 'raw'       -> don't translate at all; transliterate what was typed
     mode = 'hellenize' -> translate English to French, then transliterate AND
                           apply Greek morphological rules (-tion -> -σιον, etc.)
     mode = 'hellenize_fr' -> French input + morphological rules
+    accents = True -> additionally place Ancient-Greek-style accents and
+                      breathings on words that don't already have them.
+                      (Ignored in Latin mode — stress accents are always on.)
     """
     try:
         if not text or not text.strip():
             return {"french": "", "greek": "", "note": ""}
 
-        # Two "morph" modes share the same flag.
+        if mode == "la":
+            return {
+                "french": "",   # no French intermediate
+                "greek": transliterate_latin(text),
+                "note": "Latīnē → Hellēnikōs",
+            }
+
         hellenize = mode in ("hellenize", "hellenize_fr")
+
+        def tx(s):
+            return transliterate(s, hellenize=hellenize, accents=accents)
 
         if mode in ("fr", "hellenize_fr"):
             note = "français → grec"
-            if hellenize:
-                note += " (hellénisé)"
-            return {
-                "french": "",
-                "greek": transliterate(text, hellenize=hellenize),
-                "note": note,
-            }
+            extras = []
+            if hellenize: extras.append("hellénisé")
+            if accents:   extras.append("accentué")
+            if extras:    note += " (" + ", ".join(extras) + ")"
+            return {"french": "", "greek": tx(text), "note": note}
 
         if mode == "raw":
             return {
                 "french": "",
-                "greek": transliterate(text),
-                "note": "transliterated as-is (no translation)",
+                "greek": tx(text),
+                "note": "transliterated as-is" + (" (accentué)" if accents else ""),
             }
 
-        # Default 'en' or 'hellenize' (English with optional morph rules).
         french, note = TRANSLATOR.translate(text)
-        return {
-            "french": french,
-            "greek": transliterate(french, hellenize=hellenize),
-            "note": note + (" · hellénisé" if hellenize else ""),
-        }
+        extras = []
+        if hellenize: extras.append("hellénisé")
+        if accents:   extras.append("accentué")
+        if extras:    note = (note + " · " if note else "") + ", ".join(extras)
+        return {"french": french, "greek": tx(french), "note": note}
     except Exception as e:
         traceback.print_exc()
         return {"error": f"{type(e).__name__}: {e}"}
@@ -198,9 +209,10 @@ class Handler(BaseHTTPRequestHandler):
             mode = payload.get("mode")
             if mode is None:
                 mode = "raw" if payload.get("skip_translate") else "en"
-            if mode not in {"en", "fr", "raw", "hellenize", "hellenize_fr"}:
+            if mode not in {"en", "fr", "raw", "hellenize", "hellenize_fr", "la"}:
                 mode = "en"
-            result = _encipher(text, mode)
+            accents = bool(payload.get("accents", False))
+            result = _encipher(text, mode, accents=accents)
             self._serve_bytes(json.dumps(result, ensure_ascii=False).encode("utf-8"))
         except Exception as e:
             traceback.print_exc()

@@ -264,23 +264,34 @@
     justify-content:space-between;
     gap: 16px;
     padding-top: 6px;
+    flex-wrap: wrap;     /* allow wrap but keep relative order */
+    min-height: 60px;    /* reserve enough vertical space for two rows */
   }
 
-  .controls{ display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+  .controls{
+    display:flex;
+    gap: 10px;
+    align-items:center;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
 
   button{
     background: linear-gradient(180deg, #1f1a13, #14110d);
     color: var(--gold-bright);
     border: 1px solid var(--gold-deep);
-    padding: 10px 22px;
+    padding: 0 22px;
+    height: 36px;                 /* fixed height so adjacent controls don't shift */
+    box-sizing: border-box;
     font-family: "Cinzel", serif;
     font-size: 11px;
     letter-spacing: 0.28em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
     border-radius: 1px;
     position: relative;
+    line-height: 1.1;
   }
   button:hover:not(:disabled){
     border-color: var(--gold-bright);
@@ -310,6 +321,7 @@
     font-family: "Cinzel", serif;
     cursor: pointer;
     user-select: none;
+    height: 36px;          /* match button/select height */
   }
   .toggle input{ appearance:none; width: 0; height: 0; }
   .toggle .swatch{
@@ -402,7 +414,10 @@
     text-transform: uppercase;
     cursor: pointer;
     border-radius: 1px;
-    transition: all 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;   /* don't transition layout */
+    height: 36px;                                      /* lock height = button height */
+    box-sizing: border-box;
+    line-height: 1.1;
   }
   .fontpick:hover{
     border-color: var(--gold-bright);
@@ -415,13 +430,33 @@
     font-family: inherit;
   }
 
+  /* ───── mode dropdown ───── */
+  .modepick-wrap{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .modepick-label{
+    font-family: "Cinzel", serif;
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .modepick{
+    min-width: 280px;       /* wide enough that text won't reflow on selection */
+  }
+
   .status{
     font-family: "Cormorant Garamond", serif;
     font-style: italic;
     color: var(--parch-deep);
     font-size: 13px;
     opacity: 0.6;
-    min-height: 18px;
+    min-height: 22px;
+    min-width: 220px;     /* prevent the controls row from reflowing as text changes */
+    text-align: right;
+    flex-shrink: 0;
   }
   .status.error{ color: #d88; opacity: 0.9; }
   .status.working::after{
@@ -501,19 +536,14 @@
         <button id="copy">Copy</button>
         <button id="clear">Clear</button>
 
-        <div class="modeset" role="radiogroup" aria-label="Input mode">
-          <button class="seg" data-mode="en"
-                  title="Type in English, translate to French, then to Greek letters.">
-            EN <span class="lang">→ fr → gr</span>
-          </button>
-          <button class="seg active" data-mode="fr"
-                  title="Type in French (skip translation). Transliterate directly.">
-            FR <span class="lang">→ gr</span>
-          </button>
-          <button class="seg" data-mode="raw"
-                  title="Don't translate. Transliterate whatever you type, as-is.">
-            EN <span class="lang">→ gr</span>
-          </button>
+        <div class="modepick-wrap">
+          <span class="modepick-label">Mode</span>
+          <select id="modepick" class="fontpick modepick" title="Input mode">
+            <option value="fr" selected>FR → gr  (français en lettres grecques)</option>
+            <option value="en">EN → fr → gr  (translate then transliterate)</option>
+            <option value="raw">EN → gr  (transliterate as-is, no translation)</option>
+            <option value="la">LA → gr  (Latin with classical stress)</option>
+          </select>
         </div>
 
         <label class="toggle">
@@ -525,6 +555,11 @@
           <input type="checkbox" id="hellenize">
           <span class="swatch"></span>
           <span>Hellenize</span>
+        </label>
+        <label class="toggle" title="Place Ancient-Greek-style accents (acute/circumflex) and breathings (smooth/rough) on words that don't already have them.">
+          <input type="checkbox" id="accents">
+          <span class="swatch"></span>
+          <span>Accents</span>
         </label>
 
         <select id="fontpick" class="fontpick" title="Output font">
@@ -552,9 +587,9 @@
   const $clear     = document.getElementById('clear');
   const $live      = document.getElementById('livetoggle');
 
-  // Mode segmented control: 'en' (translate), 'fr' (already French), 'raw' (no translation).
+  // Mode dropdown
   let mode = 'fr';
-  const $segs      = document.querySelectorAll('.modeset .seg');
+  const $modepick  = document.getElementById('modepick');
   const $srcLabel  = document.querySelector('section.pane:first-of-type .pane-label .title');
   const $srcSub    = document.querySelector('section.pane:first-of-type .pane-label .sub');
 
@@ -577,24 +612,37 @@
       placeholder: 'Type anything — it will be transliterated as written.',
       showMid:     false,
     },
+    la: {
+      title:       'I · Latīnē',
+      sub:         'Latin classical · macra optant',
+      placeholder: 'Scrībe aliquid Latīnē…\n\ne.g. Veni vidi vici. (You can type macrons ā ē ī ō ū for accurate stress.)',
+      showMid:     false,
+    },
   };
 
   function applyMode(m){
+    if (!MODES[m]) m = 'fr';
     mode = m;
     const cfg = MODES[m];
     $srcLabel.textContent = cfg.title;
     $srcSub.textContent   = cfg.sub;
     $src.placeholder      = cfg.placeholder;
-    $segs.forEach(s => s.classList.toggle('active', s.dataset.mode === m));
-    // hide the French intermediate column when there's no French step
+    if ($modepick.value !== m) $modepick.value = m;
     $mid.style.opacity = cfg.showMid ? '' : '0.2';
     if(!cfg.showMid){ $mid.textContent = ''; }
+    try { localStorage.setItem('cryptogreek.mode', m); } catch {}
   }
 
-  $segs.forEach(seg => seg.addEventListener('click', () => {
-    applyMode(seg.dataset.mode);
+  // Restore previous mode if any.
+  try {
+    const savedMode = localStorage.getItem('cryptogreek.mode');
+    if (savedMode && MODES[savedMode]) mode = savedMode;
+  } catch {}
+
+  $modepick.addEventListener('change', () => {
+    applyMode($modepick.value);
     if($live.checked) run();
-  }));
+  });
 
   function setStatus(msg, cls=''){
     $status.className = 'status' + (cls ? ' ' + cls : '');
@@ -606,6 +654,7 @@
   let pendingRun = false;
 
   const $hellenize = document.getElementById('hellenize');
+  const $accents   = document.getElementById('accents');
   const $fontpick  = document.getElementById('fontpick');
 
   // Remember the picks across sessions.
@@ -614,6 +663,8 @@
     if (savedFont) $fontpick.value = savedFont;
     const savedHel = localStorage.getItem('cryptogreek.hellenize');
     if (savedHel === '1') $hellenize.checked = true;
+    const savedAcc = localStorage.getItem('cryptogreek.accents');
+    if (savedAcc === '1') $accents.checked = true;
   } catch {}
 
   function applyFont(){
@@ -625,10 +676,11 @@
 
   // The 'mode' sent to the server combines base mode + hellenize toggle.
   function effectiveMode(){
+    // Latin mode has its own stress engine and doesn't combine with hellenize.
+    if (mode === 'la') return 'la';
     if ($hellenize.checked){
       if (mode === 'fr')  return 'hellenize_fr';
       if (mode === 'en')  return 'hellenize';
-      // raw + hellenize doesn't really make sense — just hellenize the raw text
       return 'hellenize';
     }
     return mode;
@@ -637,6 +689,12 @@
   $hellenize.addEventListener('change', () => {
     try { localStorage.setItem('cryptogreek.hellenize',
                                $hellenize.checked ? '1' : '0'); } catch {}
+    if ($live.checked) run();
+  });
+
+  $accents.addEventListener('change', () => {
+    try { localStorage.setItem('cryptogreek.accents',
+                               $accents.checked ? '1' : '0'); } catch {}
     if ($live.checked) run();
   });
 
@@ -655,7 +713,11 @@
       const resp = await fetch('/api/encipher', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode: effectiveMode() })
+        body: JSON.stringify({
+          text,
+          mode: effectiveMode(),
+          accents: $accents.checked,
+        })
       });
       const result = await resp.json();
       if(result.error){
@@ -714,7 +776,7 @@
   });
 
   // Ready to go — Python server already serving us this page.
-  applyMode('fr');
+  applyMode(mode);
   setStatus('ready · type to encipher');
   $src.focus();
 
